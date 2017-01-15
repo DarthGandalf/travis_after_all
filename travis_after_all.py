@@ -31,26 +31,24 @@ build_id = os.getenv(TRAVIS_BUILD_ID)
 polling_interval = int(os.getenv(POLLING_INTERVAL, '5'))
 gh_token = os.getenv(GITHUB_TOKEN)
 
-# assume, first job is the leader
 
-
-def is_leader(job_number):
-    return job_number.endswith('.1')
-
-job_number = os.getenv(TRAVIS_JOB_NUMBER)
-
-if not job_number:
+my_job_number = os.getenv(TRAVIS_JOB_NUMBER)
+if not my_job_number:
     # seems even for builds with only one job, this won't get here
     log.fatal("Don't use defining leader for build without matrix")
     exit(1)
-elif is_leader(job_number):
-    log.info("This is a leader")
-else:
-    # since python is subprocess, env variables are exported back via file
-    with open(".to_export_back", "w") as export_var:
-        export_var.write("BUILD_MINION=YES")
-    log.info("This is a minion")
-    exit(0)
+
+leader_name = ''
+
+
+def is_leader(job):
+    return job == leader_name
+
+
+def detect_leader(token):
+    global leader_name
+    matrix = matrix_snapshot(token)
+    leader_name = matrix[-1].number
 
 
 class MatrixElement(object):
@@ -108,6 +106,17 @@ def get_token():
 
 try:
     token = get_token()
+
+    detect_leader(token)
+    if is_leader(my_job_number):
+        log.info("This is a leader")
+    else:
+        # since python is subprocess, env variables are exported back via file
+        with open(".to_export_back", "w") as export_var:
+            export_var.write("BUILD_MINION=YES")
+        log.info("This is a minion")
+        exit(0)
+
     wait_others_to_finish(token)
 
     final_snapshot = matrix_snapshot(token)
